@@ -1,0 +1,166 @@
+---
+title: "Time Series Analysis - Homework 1"
+author: "Tom Davidson"
+date: "18/09/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_knit$set(root.dir = "/Users/Tom/Desktop/time-series-analysis-fall2018")
+options(digits=4)
+```
+
+## Loading packages and data
+
+```{r load packages and data, echo = TRUE, message = FALSE}
+require("foreign")
+require("tseries")
+require("zoo")
+require("urca")
+require("knitr")
+
+data <- read.dta('data/ts_hw1.dta')
+x <- zoo(data$x, data$t)
+z <- zoo(data$z[1:60], data$t[1:60]) # values after 60 are null
+```
+
+# Analyzing series x
+## 1.1. Plot time series x
+
+```{r plot x, include = TRUE, message = FALSE, echo=TRUE}
+plot(x, xlab = 'Time')
+```
+
+
+Looking at the series `x` it appears that the mean is around zero (actually value is -0.16). The variance looks relatively constant, although there are some large spikes later in the series suggesting that it may not be a white noise process. Overall this suggests that the series is stationary.
+
+
+## 1.2. Show correlogram
+It appears that there is no equivalent function in R to produce the same output as the `corrgram` command in Stata (I even wrote a [post](https://stackoverflow.com/questions/52409056/generate-stata-style-correlogram-table-in-r?noredirect=1#comment91788125_52409056) up on Stackoverflow but have not had any useful replies). I was able to manually construct the first 5 columns of the table but was not able to produce the final two columns. Since the last two columns show the same information as the following plots I hope that this is not too much of a problem.
+
+I also wanted to compare my results to those produced by Stata to ensure that my logic was correct. It turns out that R's default `acf` function includes the first observation (where correlation between $y_t$ and $y_t$ is equal to 1) so I had to remove it.  Otherwise the output exactly matches the results I obtained from Stata. The PACF, on the other hand, is estimated differently. R uses the Yule-Walker method while Stata relies upon a simple regression based approach; the former can be estimated in Stata using the command `pac x, yw` but there is not an equivalent to the latter in R. Nonetheless the estimates are almost identical so this shouldn't have any impact on our interpretations. Additionally, the Q statistic in R does not the Ljung-Box method by default, so it needed to be specified. These results exactly match those produced by Stata.
+
+```{r correlogram x, message = FALSE, warning = FALSE, echo=TRUE}
+max_lags = 40
+acf_vec <- acf(x, plot=FALSE, lag.max=max_lags)$acf
+pacf_vec <- acf(x, plot=FALSE, lag.max=max_lags, type = 'partial')$acf
+Q_stats <- c()
+Q_pvals <- c()
+for (i in 1:max_lags) {
+  Q = Box.test(x, lag=i, type="Ljung-Box")
+  Q_stats[[i]] <- Q$statistic
+  Q_pvals[[i]] <- Q$p.value
+}
+corrgram <- cbind(LAG=seq(1,max_lags), ACF=acf_vec[2:41], PAC=pacf_vec, Q=Q_stats, "Prob>Q"=Q_pvals)
+kable(corrgram)
+```
+
+The Q statistic is significant at every lag until 40, providing strong evidence that `x` is not a white noise series. The ACF values appear to be quite large for the first couple of lags but then quickly decay. The PACF is the same as the ACF for the first lag then also rapidly decays. Based on this the series appears to be AR(1).
+
+## 1.3. Plot ACF and PACF.
+```{r plot acf and pacf x, message = FALSE, echo=TRUE}
+acf(x, main='ACF of x')
+pacf(x, main='PACF of x')
+```
+
+The graphical versions of the ACF and PACF provide a clearer picture of the results by allowing us to see which autocorrelations are statistically significant. In particular the relatively large a significant negative partial autocorrelation at lag 2 suggests that `x` may in fact be an MA(1) process. The second lag in the ACF plot is also larger than one might expect if we were looking at an AR(1) series.
+
+## 1.4. Diagnosis of time series based on results
+Based on these results I am still uncertain as to whether the series is AR(1) or MA(1). Since it shows characteristics of both AR(1) and MA(1) series it is possible that it is an ARIMA(1,0,1) series.
+
+## 1.5.  ADF and KPSS tests
+```{r adf and kpss of x, message = FALSE, warning = FALSE, echo=TRUE}
+summary(ur.df(x, lags=1))
+summary(ur.kpss(x))
+```
+The ADF test produces a test-statistic of $-13.79$. Based on this we can reject the null hypothesis at the $p < 0.01$ level since the critical value $\tau = -2.58$. This means we can reject the null hypothesis that a unit root is present in `x`.
+
+For the KPSS test the absence of a unit root is the null hypothesis. In this case the test-statistic is below the critical value, even at the $p < 0.10$ level, so we cannot reject the null hypothesis that there is a unit root.
+
+In sum, both of these tests are in agreement that there is not a unit root in series `x`. This allows us to restrict the order of integration in the ARIMA models to 0.
+
+## 1.6. ARIMA
+```{r arima x, message = FALSE, echo=TRUE}
+m1 <- forecast::Arima(x, order = c(1,0,0))
+m2 <- forecast::Arima(x, order = c(0,0,1))
+m3 <- forecast::Arima(x, order = c(1,0,1))
+print(m1)
+print(Box.test(m1$residuals, lag=40, type="Ljung-Box"))
+print(m2)
+print(Box.test(m2$residuals, lag=40, type="Ljung-Box"))
+print(m3)
+print(Box.test(m3$residuals, lag=40, type="Ljung-Box"))
+which.min(c(m1$aic, m2$aic, m3$aic))
+which.min(c(m1$bic, m2$bic, m3$bic))
+```
+The ARIMA(1,0,1) model performers best in terms of both AIC and BIC, suggesting that it is an improvement over either the AR(1) or MA(1) models. Moreover, the Ljung-Box test Q statistic is not statistically significant, unlike the other two models. This means that the residuals can be considered white noise. In both the AR(1) and MA(1) models the Q statistic is statistically significant, suggesting that both models poorly fit the data. 
+
+It was unclear exactly what this process was based on inspection of the ACF and PACF plots, but after testing different model specifications I conclude that series `x` is likely to be an ARIMA(1,0,1) process.
+
+# Analyzing series z
+***Unless altered I have omitted the code from the analysis of series z.***
+
+## 2.1. Plot time series x
+
+```{r plot z, message = FALSE}
+plot(z, xlab = 'Time')
+```
+This series appears to show evidence of a unit root. We can see that there is not a constant mean and that that variance changes over time, for example between around 0 to 10 and 35 to 50 we see very low variance, while the variance is very high in other places, with large peaks and troughs. This suggests that shocks to the series persist for a long time. Based on this the series appears to be nonstationary. However, given that we only observe 60 points in this realization of the series it is possible, however, that the series is stationary and that it simply looks cointegrated due to the short time frame.
+
+## 2.2. Show correlogram
+```{r correlogram z, message = FALSE, warning = FALSE}
+max_lags = 40
+acf_vec <- acf(z, plot=FALSE, lag.max=max_lags)$acf
+pacf_vec <- pacf(z, plot=FALSE, lag.max=max_lags)$acf
+Q_stats <- c()
+Q_pvals <- c()
+for (i in 1:max_lags) {
+  Q = Box.test(z, lag=i, type="Ljung-Box")
+  Q_stats[[i]] <- Q$statistic
+  Q_pvals[[i]] <- Q$p.value
+}
+corrgram <- cbind(LAG=seq(1,max_lags), ACF=acf_vec[2:41], PAC=pacf_vec, Q=Q_stats, "Prob>Q"=Q_pvals)
+kable(corrgram)
+```
+
+The significant Q statistics allow us to reject the hypothesis that the series is white noise, although this was apparent from the plot above. The ACF values in particular seem to remain relatively large and decline somewhat linearly, a tell-tale sign of a unit root. The PACF shows a large correlation for the first lag and then low values, also typical of a unit root but also of an AR(1) process.
+
+## 2.3. Plot ACF and PACF.
+```{r plot acf and pacf z, message = FALSE}
+acf(z, main='ACF of z', lag.max = 40)
+pacf(z, main='PACF of z', lag.max = 40)
+```
+
+The ACF clearly shows that the autocorrelations decay almost linearly, indicating that the series has a unit root. The PACF results were clear just from the table above.
+
+## 2.4. Diagnosis of time series based on results
+Based on these results I expect that the series has a unit root. The PACF more closely resembles an AR than an MA process. I expect that the series may be an ARIMA(1,1,0) series.
+
+## 2.5.  ADF and KPSS tests
+```{r adf and kpss of z, message = FALSE, warning = FALSE}
+summary(ur.df(z, lags=1))
+summary(ur.kpss(z))
+```
+Starting the the ADF test we see that we cannot reject the null hypothesis that there is a unit root at the conventional $p < 0.05$ level, although we can if we accept $p < 0.10$.  Similarly, for the KPSS test we can reject the null hypothesis that there is not a unit root at the $p < 0.10$ level. Both tests provide some weak support the hypothesis that there is a unit root in `z`. The low statistical power of the tests is likely due to the fact that we only observe 60 points in the series.
+
+## 2.6. ARIMA
+```{r arima z, message = FALSE}
+m1 <- forecast::Arima(x, order = c(1,1,0))
+print("ARIMA(1,1,0):")
+print(m1)
+print(Box.test(m1$residuals, lag=40, type="Ljung-Box"))
+```
+
+The Box-Ljung test shows that residuals of the series are not white noise after fitting the ARIMA(1,1,0) model, suggesting that it fits poorly.
+
+While I know I was only supposed to present one model here I was curious as to whether an ARIMA(0,1,1) model would fit better. The plot of `z` seems to resemble a moving average, despite the difference in the PACF. The output below shows this model. We can see  that the AIC and BIC are much lower and the p-value for the Box-Ljung test is not significant, so we can assume that the residuals are white noise. This can be observed in the plot of the residuals, which still has some high variance but no longer shows the same characteristic trends of the original series.
+
+```{r}
+m2 <- forecast::Arima(z, order = c(0,1,1))
+print("ARIMA(0,1,1):")
+print(m2)
+print(Box.test(m2$residuals, lag=40, type="Ljung-Box"))
+plot(m2$residuals)
+```
+

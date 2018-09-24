@@ -5,6 +5,8 @@ date: "18/09/2018"
 output: pdf_document
 ---
 
+Source code can be found here: "https://github.com/t-davidson/time-series-analysis-fall2018/tree/master/HW1"
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
 knitr::opts_knit$set(root.dir = "/Users/Tom/Desktop/time-series-analysis-fall2018")
@@ -99,13 +101,14 @@ The ARIMA(1,0,1) model performers best in terms of both AIC and BIC, suggesting 
 It was unclear exactly what this process was based on inspection of the ACF and PACF plots, but after testing different model specifications I conclude that series `x` is likely to be an ARIMA(1,0,1) process.
 
 # Analyzing series z
-***Unless altered I have omitted the code from the analysis of series z.***
+***I have omitted the code from the analysis of series z to avoid repetition.***
 
-## 2.1. Plot time series x
+## 2.1. Plot time series z
 
 ```{r plot z, message = FALSE}
 plot(z, xlab = 'Time')
 ```
+
 This series appears to show evidence of a unit root. We can see that there is not a constant mean and that that variance changes over time, for example between around 0 to 10 and 35 to 50 we see very low variance, while the variance is very high in other places, with large peaks and troughs. This suggests that shocks to the series persist for a long time. Based on this the series appears to be nonstationary. However, given that we only observe 60 points in this realization of the series it is possible, however, that the series is stationary and that it simply looks cointegrated due to the short time frame.
 
 ## 2.2. Show correlogram
@@ -142,25 +145,26 @@ Based on these results I expect that the series has a unit root. The PACF more c
 summary(ur.df(z, lags=1))
 summary(ur.kpss(z))
 ```
+
 Starting the the ADF test we see that we cannot reject the null hypothesis that there is a unit root at the conventional $p < 0.05$ level, although we can if we accept $p < 0.10$.  Similarly, for the KPSS test we can reject the null hypothesis that there is not a unit root at the $p < 0.10$ level. Both tests provide some weak support the hypothesis that there is a unit root in `z`. The low statistical power of the tests is likely due to the fact that we only observe 60 points in the series.
 
 ## 2.6. ARIMA
 ```{r arima z, message = FALSE}
-m1 <- forecast::Arima(x, order = c(1,1,0))
+m1 <- forecast::Arima(z, order = c(1,1,0))
 print("ARIMA(1,1,0):")
 print(m1)
 print(Box.test(m1$residuals, lag=40, type="Ljung-Box"))
 ```
 
-The Box-Ljung test shows that residuals of the series are not white noise after fitting the ARIMA(1,1,0) model, suggesting that it fits poorly.
+The Box-Ljung test shows that residuals of the series are white noise after fitting the ARIMA(1,1,0) model. This suggests that the model including the AR(1) component and an order of integration equal to 1 fits the data well.
 
-While I know I was only supposed to present one model here I was curious as to whether an ARIMA(0,1,1) model would fit better. The plot of `z` seems to resemble a moving average, despite the difference in the PACF. The output below shows this model. We can see  that the AIC and BIC are much lower and the p-value for the Box-Ljung test is not significant, so we can assume that the residuals are white noise. This can be observed in the plot of the residuals, which still has some high variance but no longer shows the same characteristic trends of the original series.
+While I know I was only supposed to present one model here, I was curious as to whether an ARIMA(0,1,1) model would fit better. The output below shows this model. We can see  that the AIC and BIC and the p-value for the Box-Ljung test are almost identical.
 
 ```{r}
 m2 <- forecast::Arima(z, order = c(0,1,1))
 print("ARIMA(0,1,1):")
 print(m2)
 print(Box.test(m2$residuals, lag=40, type="Ljung-Box"))
-plot(m2$residuals)
 ```
+
 

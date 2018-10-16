@@ -1,0 +1,100 @@
+---
+title: "Times Series Analysis - HW3"
+author: "Tom Davidson"
+date: "14/10/2018"
+output: pdf_document
+---
+
+Source code can be found here: "https://github.com/t-davidson/time-series-analysis-fall2018/tree/master/HW3"
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_knit$set(root.dir = "/Users/Tom/Desktop/time-series-analysis-fall2018")
+options(digits=4)
+options(scipen = 5)
+```
+
+```{r load, message = FALSE, warning = FALSE, echo=TRUE}
+require("foreign")
+require("tseries")
+require("zoo")
+require("urca")
+require("knitr")
+require("vars")
+require("ggplot2")
+require("dplyr")
+require("tidyr")
+```
+
+
+```{r loading data, message = FALSE, warning = FALSE, echo=TRUE}
+data <- read.dta('data/NMC_data/NMC_5_0/NMC_5_0.dta')
+data <- data[data$year <= 2001, ]
+ind <- data[data$stateabb == 'IND',]
+pak <- data[data$stateabb == 'PAK',]
+ind_ex <- zoo(ind$milex, ind$year)
+pak_ex <- zoo(pak$milex, pak$year)
+```
+
+## Step 1: Plot the two series
+```{r plots, message = FALSE, warning = FALSE, echo=TRUE, tidy=TRUE}
+data2 <- data[data$stateabb %in% c('IND','PAK'),]
+ggplot(data=data2, aes(x=year, y=milex, group =  stateabb, color = stateabb)) + geom_line() + xlab("Year") + ylab("Military expenditures ($)") +labs(color="")
+```
+
+## Step 2: Testing for evidence of a unit root in either series
+```{r adf and kpss of x, message = FALSE, warning = FALSE, echo=TRUE, tidy=TRUE}
+summary(ur.df(ind_ex, lags=1))
+summary(ur.df(pak_ex, lags=1))
+```
+The null hypothesis in the ADF test is that there is a unit root present in the series. In both cases we are unable to reject the null hypothesis that there is a unit root. We must assume, therefore, that Indian and Pakistani defense spending are both I(1) processes.
+
+## Step 3: Estimating the cointegration equation
+In this case I estimate the equation with Indian defense spending as the dependent variable.
+```{r estimating cointegration equation, message = FALSE, warning = FALSE, echo=TRUE, tidy=TRUE}
+ind_coint <- summary(lm(ind_ex ~ pak_ex))
+print(ind_coint)
+```
+
+
+## Step 4: Testing the residuals for stationarity
+```{r examining residuals for stationarity, message = FALSE, warning = FALSE, echo=TRUE, tidy=TRUE}
+ind_resid <- resid(ind_coint)
+summary(ur.df(ind_resid, lags=1))
+```
+The Augmented Dickey-Fuller test statistic exceeds the critical threshold at the 5% significance level, although not the 1% level. This means that we can reject the null hypothesis that the residuals have a unit root. Based on this finding we can conclude that this series is stationary and that the variables are cointegrated (BFHP p.161). 
+
+## Step 6: Evaluating correct lag length for VAR model
+```{r evaluating lag length, message = FALSE, warning = FALSE, echo=TRUE, tidy=TRUE}
+ind_ex.diff <- diff(ind_ex)
+pak_ex.diff <- diff(pak_ex)
+ind_resid.lag <- lag(ind_resid)
+data <- cbind(ind_ex.diff, pak_ex.diff, ind_resid.lag)
+data <- na.omit(data)
+lag_info <- VARselect(cbind(data$ind_ex.diff, data$pak_ex.diff), exogen = data$ind_resid.lag, lag.max = 4, type='both')
+print(lag_info$selection)
+lag_info$criteria
+```
+Based on all information criteria tested (although the command in R tests fewer than in Stata) it appears that 4 lags are prefered by 3/4 of the different criteria. In the BFHP analysis they only use 3 lags. I will use 4 lags in the analysis below.
+
+## Step 7: Estimating zero lag ECM
+Here I aim to reproduce table 6.6 from BFHP:
+```{r, message = FALSE, warning = FALSE, echo=TRUE, tidy=TRUE}
+summary(lm(ind_ex.diff ~ ind_resid[2:55]))
+summary(lm(pak_ex.diff ~ ind_resid[2:55]))
+```
+Compared to the results in Table 6.6 in BFHP, where they find that Indian defense spending appears to be tracking that of Pakistan, we see that the error correction term is only statistically significant in the second regression. This suggests instead that Pakistani defense spending is moving in equilibrium with that of India.
+
+## Step 8: Running a VAR model to predict differenced Indian and Pakistani defense spending
+```{r var estimation, message = FALSE, warning = FALSE, echo=TRUE, tidy=TRUE} 
+var.model <- VAR(y = cbind(data$ind_ex.diff, data$pak_ex.diff), p = 4, exogen= data$ind_resid.lag)
+summary(var.model)
+```
+In this VAR model predicting the first-difference in Indian and Pakistani defense spending we see that the error correction terms are statistically significant in both cases, althougn their signs are opposite. For India, the EC coefficient of 0.22 is much smaller than that observed in BFHP Table 6.7, suggesting that India still increases spending in response to change in Pakistani spending, but to a lesser degree than in earlier periods. Whereas the BFHP coefficient for the EC in the Pakistan equation was not significant, with a value of -0.15, here we do observe a significant coefficient of -0.11. This suggests that Pakistan decreases its defense spending in response to changes in Indian defense spending.
+
+## Step 8: Granger-causality testin
+```{r granger causality test, message = FALSE, warning = FALSE, echo=TRUE, tidy=TRUE}
+causality(var.model, cause = "data.ind_ex.diff")$Granger
+causality(var.model, cause = "data.pak_ex.diff")$Granger
+```
+The results of a Granger causality test show that changes in Indian defense spending Granger-cause changes in Pakistani defense spending (p = 0.04) but that the reverse is not true, at least at conventional levels of statistical significance. In the BFHP results we see that both series Granger-cause each other. This suggests that when we consider recent years that Pakistan is responding to India's changes but that India is not paying as much attention to Pakistan. Since Pakistan is the smaller of the two nations this makes sense; it has to keep up with changes in the rate of Indian defense spending but cannot keep up in absolute terms. India is large enough that it can just increase defense spending without too much regard for changes in Pakistan's spending, since it already has a far larger military.

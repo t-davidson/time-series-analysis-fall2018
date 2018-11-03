@@ -1,0 +1,42 @@
+---
+title: "HW6 - Bivariate figure"
+author: "Tom Davidson"
+date: "05/11/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_knit$set(root.dir = "/Users/Tom/Desktop/time-series-analysis-fall2018")
+options(digits=4)
+options(scipen = 5)
+```
+
+```{r load, message = FALSE, warning = FALSE, echo=FALSE}
+require("foreign")
+require("tseries")
+require("zoo")
+require("ggplot2")
+require("dplyr")
+require("tidyr")
+require("reshape2")
+require("scales")
+```
+
+
+```{r loading data, message = FALSE, warning = FALSE, echo=FALSE}
+data <- read.csv('HW6/BF_timeseries_2018_weekly.csv')
+data$posts <- scale(data$posts)
+data$comments <- scale(data$comments)
+data$X <- as.Date(data$X)
+colnames(data)[1] <- "Time"
+
+meltdf <- melt(data[c("Time","posts","comments")],id="Time")
+p <- ggplot(meltdf,aes(x=Time,y=value,colour=variable,group=variable)) + geom_line()  + ylab('Normalized number of posts/comments per week') + xlab('Time') +labs(color="") + labs(title="Posts and Comments on Britain First's Facebook Page over time")
+p + annotate("text", x = as.Date("2013-12-31"), y = 2, label = "Comments") + annotate("text", x = as.Date("2016-09-01"), y = 3.5, label = "Posts") + theme(legend.position="none", plot.title = element_text(hjust = 0.5))
+```
+
+The plot shows the normalized number of posts and comments made on Britain First's Facebook page from late 2013 until the beginning of 2018. Posts can only be made by the organization itself (or the small set of activists whom they permit to post) whereas comments can be written by any Facebook users, although they can only comment on the posts. The posts consist of a mixture of text, images, and videos. The number of posts appears to increase over time until 2016, where there are a number of large spikes, followed by a sharp decline in mid 2017. The number of comments grows gradually before spiking in early 2014. The series shows a number of sharp increases over time, followed by declines, suggesting sporadic user activity. There is also the same decline in 2017. I expect that both series are related: more (fewer) posts means more (fewer) things that people can comment on. It is likely that activity by the group results in activity among its online supporters, and that activity among the supporters may lead the group to be more active.
+
+
+Source code can be found here: "https://github.com/t-davidson/time-series-analysis-fall2018/tree/master/HW6"
